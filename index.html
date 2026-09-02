@@ -1,0 +1,1217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Timesheet Portal</title>
+    
+    <!-- PWA META TAGS -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1e40af">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- LIBRERÍA PARA EXPORTAR A EXCEL (.xlsx) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        /* Ocultar la barra de desplazamiento (scrollbar) en los tabs para que se vea más limpio en móviles, pero siga siendo deslizable */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;  /* IE and Edge */
+            scrollbar-width: none;  /* Firefox */
+        }
+    </style>
+</head>
+<body class="bg-gray-100 h-screen flex flex-col font-sans">
+
+    <!-- PWA INSTALL PROMPT (Optional UI) -->
+    <div id="install-prompt" class="hidden bg-blue-600 text-white p-3 flex justify-between items-center text-sm shadow-md z-50 relative">
+        <div><i class="fa-solid fa-download mr-2"></i> Instala nuestra App para un acceso más rápido.</div>
+        <div class="flex gap-2">
+            <button id="btn-install" class="bg-white text-blue-600 px-3 py-1 rounded font-bold uppercase text-xs">Instalar</button>
+            <button id="btn-close-install" class="text-white opacity-70 hover:opacity-100"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+    </div>
+
+    <!-- FLOATING NOTIFICATION TOAST CONTAINER -->
+    <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col gap-2 max-w-md w-full px-4 pointer-events-none"></div>
+
+    <!-- LOGIN SCREEN -->
+    <div id="login-screen" class="flex flex-1 items-center justify-center p-4">
+        <div class="bg-white p-8 rounded-lg shadow-md w-96 max-w-full">
+            <h2 class="text-2xl font-bold mb-6 text-center text-blue-800">Timesheet Login</h2>
+            
+            <div id="error-message" class="hidden bg-red-100 text-red-700 p-3 rounded mb-4 text-sm font-semibold"></div>
+            <div id="success-message" class="hidden bg-green-100 text-green-700 p-3 rounded mb-4 text-sm font-semibold"></div>
+
+            <form id="login-form">
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">Email</label>
+                    <input type="email" id="email" class="w-full p-2 border rounded focus:outline-none focus:border-blue-500" required>
+                </div>
+                <div class="mb-6">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">Password</label>
+                    <input type="password" id="password" class="w-full p-2 border rounded focus:outline-none focus:border-blue-500" required>
+                </div>
+                <button type="submit" class="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded hover:bg-blue-700 transition-colors">
+                    Sign In
+                </button>
+            </form>
+            <div class="mt-4 text-center">
+                <button type="button" id="forgot-password" class="text-sm text-blue-500 hover:underline">Forgot your password?</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN APP SCREEN (Hidden by default) -->
+    <div id="app-screen" class="hidden flex-col h-screen overflow-y-auto">
+        
+        <!-- STICKY HEADER WRAPPER (Envuelve la Navbar y los Tabs para que siempre estén arriba al hacer scroll) -->
+        <div class="sticky top-0 z-40 w-full shadow-md flex flex-col">
+            <!-- Navigation Bar -->
+            <nav class="bg-blue-800 text-white p-4 flex justify-between items-center shrink-0">
+                <div class="font-bold text-lg md:text-xl flex items-center gap-2">
+                    <i class="fa-solid fa-clock-rotate-left"></i> Timesheet Portal
+                </div>
+                <div class="flex items-center gap-2 md:gap-4">
+                    <div class="text-xs md:text-sm hidden sm:block">
+                        Hello, <span id="user-display-email" class="font-bold"></span> 
+                        <span id="user-display-role" class="bg-blue-600 px-2 py-1 rounded text-xs ml-2 uppercase"></span>
+                    </div>
+                    <button id="logout-btn" class="bg-red-500 hover:bg-red-600 px-3 py-1 rounded text-xs md:text-sm font-bold transition-colors"><i class="fa-solid fa-right-from-bracket sm:hidden"></i><span class="hidden sm:inline">Log Out</span></button>
+                </div>
+            </nav>
+
+            <!-- APP TABS (Only visible for roles: owner, controller, accounting) -->
+            <div id="app-tabs" class="hidden bg-white shrink-0 border-b">
+                <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                    <!-- Se agregó overflow-x-auto, no-scrollbar y padding lateral para móviles -->
+                    <div class="flex space-x-6 sm:space-x-8 overflow-x-auto no-scrollbar pb-1 pr-4">
+                        <button id="tab-my-timesheet" class="app-tab border-blue-600 text-blue-600 border-b-2 py-4 px-1 text-sm font-medium flex items-center gap-2 whitespace-nowrap">
+                            <i class="fa-solid fa-user"></i> My Timesheet
+                        </button>
+                        <button id="tab-all-timesheets" class="app-tab border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 border-b-2 py-4 px-1 text-sm font-medium flex items-center gap-2 hidden whitespace-nowrap">
+                            <i class="fa-solid fa-users"></i> Company Timesheets
+                        </button>
+                        <button id="tab-user-management" class="app-tab border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 border-b-2 py-4 px-1 text-sm font-medium flex items-center gap-2 hidden whitespace-nowrap">
+                            <i class="fa-solid fa-user-gear"></i> User Management
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dynamic Content Area -->
+        <div class="p-4 md:p-8 flex-1 max-w-7xl mx-auto w-full relative">
+            
+            <!-- ========================================== -->
+            <!-- VIEW 0: PAYWALL / EXPIRED LICENSE SCREEN   -->
+            <!-- ========================================== -->
+            <div id="paywall-screen" class="hidden absolute inset-0 z-50 flex items-start pt-20 justify-center bg-gray-100 bg-opacity-95 p-4">
+                <div class="bg-white p-8 rounded-lg shadow-2xl max-w-md w-full text-center border-t-4 border-red-500">
+                    <i class="fa-solid fa-triangle-exclamation text-5xl text-red-500 mb-4"></i>
+                    <h2 class="text-2xl font-bold text-gray-800 mb-2">License Expired</h2>
+                    <p class="text-gray-600 mb-6 text-sm">
+                        Your company's 30-day trial period or subscription has ended. To continue using the Timesheet Portal and retain your data, please contact the system administrator to activate your plan.
+                    </p>
+                    <div class="bg-gray-50 p-4 rounded text-left border">
+                        <p class="text-xs font-bold text-gray-500 uppercase mb-1">Contact Support:</p>
+                        <a href="mailto:admin@tusistema.com" class="text-blue-600 hover:underline font-medium break-all">admin@tusistema.com</a>
+                    </div>
+                </div>
+            </div>
+
+
+            <!-- ========================================== -->
+            <!-- VIEW 1: MY TIMESHEET (EMPLOYEE VIEW)       -->
+            <!-- ========================================== -->
+            <div id="view-my-timesheet" class="view-section">
+                <div class="bg-white p-4 sm:p-6 rounded shadow-md border-t-4 border-blue-500 mb-6 relative">
+                    <!-- Status Banner for Draft/Submitted States -->
+                    <div id="status-banner" class="hidden mb-4 p-3 rounded text-sm font-bold flex items-center gap-2"></div>
+
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4 border-b pb-4">
+                        <div>
+                            <h3 class="text-xl font-bold text-gray-800">Daily Timesheet</h3>
+                            <p class="text-xs text-gray-500">Save your progress throughout the day and submit when finished.</p>
+                        </div>
+                        <div class="w-full sm:w-auto">
+                            <label class="block text-gray-700 text-xs font-bold mb-1 uppercase">Select Date</label>
+                            <input type="date" id="ts-date" min="2026-08-20" class="w-full sm:w-auto p-2 border rounded focus:outline-none focus:border-blue-500 text-sm font-bold bg-blue-50 text-blue-900 cursor-pointer hover:bg-blue-100 transition" required>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        <!-- LEFT COLUMN: TIMESHEET FORM (Takes up 2/3 of space) -->
+                        <div class="lg:col-span-2">
+                            <form id="timesheet-form" class="space-y-6">
+                                <!-- SECTION 1: WORK HOURS & MULTI-LINE JOBS -->
+                                <div class="bg-gray-50 p-2 sm:p-4 rounded border">
+                                    <div class="flex justify-between items-center mb-4 border-b pb-2">
+                                        <h4 class="font-bold text-blue-800">Work Hours & Jobs</h4>
+                                        <button type="button" id="add-row-btn" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-2 px-3 rounded shadow transition-colors flex items-center gap-1 shrink-0">
+                                            <i class="fa-solid fa-plus"></i> Add Job Row
+                                        </button>
+                                    </div>
+
+                                    <div class="overflow-x-auto no-scrollbar border rounded">
+                                        <table class="w-full text-left border-collapse" id="job-rows-table">
+                                            <thead>
+                                                <!-- EXPANDED min-widths para celulares -->
+                                                <tr class="bg-gray-200 text-gray-700 text-[10px] sm:text-xs uppercase tracking-wider">
+                                                    <th class="p-2 min-w-[250px] border-r">Job #</th>
+                                                    <th class="p-2 min-w-[100px] border-r">Regular</th>
+                                                    <th class="p-2 min-w-[100px] border-r">Overtime</th>
+                                                    <th class="p-2 min-w-[100px] border-r">Double Time</th>
+                                                    <th class="p-2 min-w-[100px] border-r">High Rate</th>
+                                                    <th class="p-2 min-w-[200px] border-r">Out of Territory Notes</th>
+                                                    <th class="p-2 min-w-[60px] text-center">Action</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="job-rows-container" class="divide-y divide-gray-200">
+                                                <!-- Dynamic rows injected via JS -->
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <p class="text-[10px] text-gray-400 mt-2 text-right italic"><i class="fa-solid fa-arrows-left-right"></i> Swipe table to see more columns</p>
+                                </div>
+
+                                <!-- SECTION 2: REIMBURSEMENTS (Multi-line) -->
+                                <div class="bg-gray-50 p-2 sm:p-4 rounded border">
+                                    <div class="flex justify-between items-center mb-4 border-b pb-2">
+                                        <div>
+                                            <h4 class="font-bold text-blue-800">Reimbursements</h4>
+                                            <p class="text-[10px] sm:text-xs text-gray-500 font-bold">Receipt upload disabled for this prototype.</p>
+                                        </div>
+                                        <button type="button" id="add-reimb-btn" class="bg-green-600 hover:bg-green-700 text-white text-xs font-bold py-2 px-3 rounded shadow transition-colors flex items-center gap-1 shrink-0">
+                                            <i class="fa-solid fa-plus"></i> Add Expense
+                                        </button>
+                                    </div>
+
+                                    <div class="overflow-x-auto no-scrollbar border rounded">
+                                        <table class="w-full text-left border-collapse" id="reimb-rows-table">
+                                            <thead>
+                                                <!-- EXPANDED min-widths para celulares -->
+                                                <tr class="bg-gray-200 text-gray-700 text-[10px] sm:text-xs uppercase tracking-wider">
+                                                    <th class="p-2 min-w-[250px] border-r">Job #</th>
+                                                    <th class="p-2 min-w-[150px] border-r">Expense Type</th>
+                                                    <th class="p-2 min-w-[120px] border-r">Amount / Qty</th>
+                                                    <th class="p-2 min-w-[200px] border-r">Notes</th>
+                                                    <th class="p-2 min-w-[60px] text-center">Action</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="reimb-rows-container" class="divide-y divide-gray-200">
+                                                <!-- Dynamic reimbursement rows injected via JS -->
+                                            </tbody>
+                                        </table>
+                                        <div id="no-reimb-msg" class="text-center p-4 text-gray-500 text-sm italic">
+                                            No reimbursements added. Click "Add Expense" if needed.
+                                        </div>
+                                    </div>
+                                    <p class="text-[10px] text-gray-400 mt-2 text-right italic"><i class="fa-solid fa-arrows-left-right"></i> Swipe table to see more columns</p>
+                                </div>
+
+                                <!-- Submit Buttons -->
+                                <div class="pt-4 flex flex-col md:flex-row justify-between items-center gap-4 border-t">
+                                    <div id="loading-spinner" class="hidden flex items-center gap-2 text-blue-600 font-bold w-full md:w-auto justify-center">
+                                        <i class="fa-solid fa-spinner fa-spin text-2xl"></i> Processing...
+                                    </div>
+                                    <div class="flex flex-col sm:flex-row w-full md:w-auto gap-4 ml-auto">
+                                        <button type="button" id="save-draft-btn" class="w-full md:w-auto bg-gray-500 text-white font-bold py-3 px-6 rounded hover:bg-gray-600 shadow-md transition-colors text-sm flex items-center justify-center gap-2">
+                                            <i class="fa-solid fa-floppy-disk"></i> Save Draft
+                                        </button>
+                                        <button type="submit" id="submit-ts-btn" class="w-full md:w-auto bg-green-600 text-white font-bold py-3 px-8 rounded hover:bg-green-700 shadow-md transition-colors text-lg flex items-center justify-center gap-2">
+                                            <i class="fa-solid fa-paper-plane"></i> Final Submit
+                                        </button>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+
+                        <!-- RIGHT COLUMN: RECENT ACTIVITY SUMMARY -->
+                        <div class="lg:col-span-1">
+                            <div class="bg-gray-50 p-4 rounded border h-full">
+                                <h4 class="font-bold text-blue-800 border-b pb-2 mb-4 flex items-center gap-2">
+                                    <i class="fa-solid fa-calendar-check text-blue-600"></i> Recent Activity (Last 7 Days)
+                                </h4>
+                                <p class="text-xs text-gray-500 mb-4">Click on any date below to view or edit its timesheet.</p>
+                                <div id="recent-activity-list" class="space-y-3">
+                                    <div class="text-center text-gray-500 text-sm py-4">
+                                        <i class="fa-solid fa-spinner fa-spin"></i> Loading history...
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div> <!-- End of Grid -->
+                </div>
+            </div>
+
+            <!-- ========================================== -->
+            <!-- VIEW 2: ALL COMPANY TIMESHEETS & EXPORT    -->
+            <!-- ========================================== -->
+            <div id="view-all-timesheets" class="view-section hidden">
+                <div class="bg-white p-4 sm:p-6 rounded shadow-md border-t-4 border-purple-500 mb-6 relative">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 border-b pb-4 gap-4">
+                        <div>
+                            <h3 class="text-xl font-bold text-gray-800">Company Timesheets</h3>
+                            <p class="text-xs text-gray-500">Filter, view, and export employee submissions.</p>
+                        </div>
+                        <button type="button" id="export-excel-btn" class="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white text-sm font-bold py-2 px-4 rounded shadow transition-colors flex items-center justify-center gap-2 shrink-0">
+                            <i class="fa-solid fa-file-excel"></i> Export to Excel
+                        </button>
+                    </div>
+
+                    <!-- FILTERS -->
+                    <div class="flex flex-col md:flex-row gap-4 mb-6 bg-gray-50 p-4 rounded border">
+                        <div class="flex-1">
+                            <label class="block text-gray-700 text-xs font-bold mb-1 uppercase">Employee Email / Name</label>
+                            <input type="text" id="filter-name" placeholder="Search by email..." class="w-full p-2 border rounded focus:outline-none focus:border-purple-500 text-sm">
+                        </div>
+                        <div class="w-full md:w-48">
+                            <label class="block text-gray-700 text-xs font-bold mb-1 uppercase">Start Date</label>
+                            <input type="date" id="filter-start" class="w-full p-2 border rounded focus:outline-none focus:border-purple-500 text-sm">
+                        </div>
+                        <div class="w-full md:w-48">
+                            <label class="block text-gray-700 text-xs font-bold mb-1 uppercase">End Date</label>
+                            <input type="date" id="filter-end" class="w-full p-2 border rounded focus:outline-none focus:border-purple-500 text-sm">
+                        </div>
+                        <div class="flex items-end">
+                            <button type="button" id="btn-apply-filters" class="w-full md:w-auto bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-6 rounded shadow transition-colors text-sm h-[38px]">
+                                Search
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- TABLE RESULTS -->
+                    <div class="overflow-x-auto border rounded">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-gray-200 text-gray-700 text-xs uppercase tracking-wider">
+                                    <th class="p-3 border-b min-w-[120px]">Date</th>
+                                    <th class="p-3 border-b min-w-[200px]">Employee</th>
+                                    <th class="p-3 border-b min-w-[120px]">Status</th>
+                                    <th class="p-3 border-b text-center min-w-[120px]">Total Hours</th>
+                                    <th class="p-3 border-b text-center min-w-[160px]">Reimbursements ($)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="admin-timesheets-table-body" class="divide-y divide-gray-200 bg-white text-sm">
+                                <tr>
+                                    <td colspan="5" class="p-6 text-center text-gray-500">
+                                        Click "Search" to load timesheets.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========================================== -->
+            <!-- VIEW 3: USER MANAGEMENT (OWNER/CONTROLLER) -->
+            <!-- ========================================== -->
+            <div id="view-user-management" class="view-section hidden">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    
+                    <!-- ADD USER FORM -->
+                    <div class="md:col-span-1">
+                        <div class="bg-white p-6 rounded shadow-md border-t-4 border-orange-500">
+                            <h3 class="text-lg font-bold text-gray-800 mb-2">Add New User</h3>
+                            <p class="text-xs text-gray-500 mb-4 border-b pb-4">Create access for a new employee. In a production environment, this sends an invite email.</p>
+                            
+                            <form id="add-user-form" class="space-y-4">
+                                <div>
+                                    <label class="block text-gray-700 text-xs font-bold mb-1 uppercase">Email Address</label>
+                                    <input type="email" id="new-user-email" class="w-full p-2 border rounded focus:outline-none focus:border-orange-500 text-sm" required>
+                                </div>
+                                <div>
+                                    <label class="block text-gray-700 text-xs font-bold mb-1 uppercase">Role</label>
+                                    <select id="new-user-role" class="w-full p-2 border rounded focus:outline-none focus:border-orange-500 text-sm" required>
+                                    </select>
+                                </div>
+                                <button type="submit" class="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded shadow transition-colors text-sm">
+                                    Add User to Database
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- USERS LIST -->
+                    <div class="md:col-span-2">
+                        <div class="bg-white p-6 rounded shadow-md border-t-4 border-gray-600">
+                            <div class="flex justify-between items-center mb-4 border-b pb-2">
+                                <div>
+                                    <h3 class="text-lg font-bold text-gray-800">Company Users</h3>
+                                    <p class="text-xs text-gray-500">List of users who can access the portal.</p>
+                                </div>
+                                <button type="button" id="btn-refresh-users" class="text-gray-500 hover:text-blue-600">
+                                    <i class="fa-solid fa-rotate-right"></i> Refresh
+                                </button>
+                            </div>
+                            
+                            <div class="overflow-x-auto border rounded">
+                                <table class="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr class="bg-gray-100 text-gray-700 text-xs uppercase tracking-wider">
+                                            <th class="p-3 border-b min-w-[200px]">Email</th>
+                                            <th class="p-3 border-b min-w-[150px]">Role</th>
+                                            <th class="p-3 border-b text-center min-w-[120px]">Status</th>
+                                            <th class="p-3 border-b text-center min-w-[150px]">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="users-table-body" class="divide-y divide-gray-200 bg-white text-sm">
+                                        <!-- Injected via JS -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+        </div> <!-- End of Max Width Container -->
+    </div> <!-- End App Screen -->
+
+    <!-- FIREBASE & APP SCRIPTS -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.3.1/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.3.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, collection, serverTimestamp, getDocs, query, where, updateDoc } from "https://www.gstatic.com/firebasejs/10.3.1/firebase-firestore.js";
+
+        // FECHA DE INICIO OFICIAL DEL SISTEMA
+        const SYSTEM_START_DATE = "2026-08-20";
+        // LÍMITE DE USUARIOS
+        const MAX_USERS_ALLOWED = 5;
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDsfADBi26kZlxmb32CkG0uvKKPNP0q5Mk",
+            authDomain: "pgrtimesheet-sandbox.firebaseapp.com",
+            projectId: "pgrtimesheet-sandbox",
+            storageBucket: "pgrtimesheet-sandbox.firebasestorage.app",
+            messagingSenderId: "274092264126",
+            appId: "1:274092264126:web:342ab755d36c9707926cef"
+         };
+
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // GLOBAL USER ROLE STATE
+        let currentUserRole = "empleado"; 
+
+        // UI Elements - General
+        const loginScreen = document.getElementById('login-screen');
+        const appScreen = document.getElementById('app-screen');
+        const errorMsg = document.getElementById('error-message');
+        const paywallScreen = document.getElementById('paywall-screen'); 
+        
+        // UI Elements - Tabs & Views
+        const appTabsContainer = document.getElementById('app-tabs');
+        const tabMyTs = document.getElementById('tab-my-timesheet');
+        const tabAllTs = document.getElementById('tab-all-timesheets');
+        const tabUsers = document.getElementById('tab-user-management');
+        const viewMyTs = document.getElementById('view-my-timesheet');
+        const viewAllTs = document.getElementById('view-all-timesheets');
+        const viewUsers = document.getElementById('view-user-management');
+
+        // UI Elements - Form My Timesheet
+        const tsForm = document.getElementById('timesheet-form');
+        const jobRowsContainer = document.getElementById('job-rows-container');
+        const reimbRowsContainer = document.getElementById('reimb-rows-container');
+        const noReimbMsg = document.getElementById('no-reimb-msg');
+        const loadingSpinner = document.getElementById('loading-spinner');
+        const submitBtn = document.getElementById('submit-ts-btn');
+        const saveDraftBtn = document.getElementById('save-draft-btn');
+        const dateInput = document.getElementById('ts-date');
+        const statusBanner = document.getElementById('status-banner');
+        const recentActivityList = document.getElementById('recent-activity-list');
+
+        // UI Elements - Admin Timesheets
+        const adminTsTableBody = document.getElementById('admin-timesheets-table-body');
+        const btnApplyFilters = document.getElementById('btn-apply-filters');
+        const btnExportExcel = document.getElementById('export-excel-btn');
+        let currentAdminData = []; 
+
+        // UI Elements - User Management
+        const usersTableBody = document.getElementById('users-table-body');
+        const addUserForm = document.getElementById('add-user-form');
+        const btnRefreshUsers = document.getElementById('btn-refresh-users');
+
+        // --- PWA REGISTRATION ---
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js').then((registration) => {
+                    console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                }, (error) => {
+                    console.log('ServiceWorker registration failed: ', error);
+                });
+            });
+        }
+
+        // PWA Install Prompt Logic
+        let deferredPrompt;
+        const installPromptUi = document.getElementById('install-prompt');
+        const btnInstall = document.getElementById('btn-install');
+        const btnCloseInstall = document.getElementById('btn-close-install');
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            installPromptUi.classList.remove('hidden');
+        });
+
+        btnInstall.addEventListener('click', async () => {
+            installPromptUi.classList.add('hidden');
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                console.log(`User response to the install prompt: ${outcome}`);
+                deferredPrompt = null;
+            }
+        });
+
+        btnCloseInstall.addEventListener('click', () => {
+            installPromptUi.classList.add('hidden');
+        });
+
+
+        // Toast Notification System
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            const bgClass = type === 'success' ? 'bg-green-600 text-white' : (type === 'error' ? 'bg-red-600 text-white' : 'bg-blue-600 text-white');
+            const icon = type === 'success' ? 'fa-circle-check' : (type === 'error' ? 'fa-circle-exclamation' : 'fa-circle-info');
+            
+            toast.className = `pointer-events-auto flex items-center justify-between p-4 rounded-lg shadow-xl ${bgClass} transform transition-all duration-300 translate-y-2 opacity-0`;
+            toast.innerHTML = `
+                <div class="flex items-center gap-3">
+                    <i class="fa-solid ${icon} text-lg"></i>
+                    <span class="font-semibold text-sm">${message}</span>
+                </div>
+                <button type="button" class="ml-4 text-white hover:text-gray-200 focus:outline-none" onclick="this.parentElement.remove()">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            `;
+            
+            container.appendChild(toast);
+            setTimeout(() => { toast.classList.remove('translate-y-2', 'opacity-0'); }, 10);
+            setTimeout(() => {
+                toast.classList.add('translate-y-2', 'opacity-0');
+                setTimeout(() => toast.remove(), 300);
+            }, 6000); 
+        }
+
+        // --- INACTIVITY AUTO LOGOUT LOGIC ---
+        const INACTIVITY_TIME_MS = 3 * 60 * 1000; // 3 minutos
+        let inactivityTimer;
+
+        function resetInactivityTimer() {
+            clearTimeout(inactivityTimer);
+            if (auth.currentUser) {
+                inactivityTimer = setTimeout(() => {
+                    signOut(auth).then(() => {
+                        showToast("Por su seguridad, la sesión se ha cerrado por inactividad de 3 minutos.", "error");
+                    });
+                }, INACTIVITY_TIME_MS);
+            }
+        }
+
+        ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'].forEach(evt => {
+            document.addEventListener(evt, resetInactivityTimer);
+        });
+
+        // --- TAB NAVIGATION LOGIC ---
+        function switchTab(activeTabId, activeViewId) {
+            [tabMyTs, tabAllTs, tabUsers].forEach(tab => {
+                tab.classList.remove('border-blue-600', 'text-blue-600');
+                tab.classList.add('border-transparent', 'text-gray-500');
+            });
+            const activeTab = document.getElementById(activeTabId);
+            activeTab.classList.remove('border-transparent', 'text-gray-500');
+            activeTab.classList.add('border-blue-600', 'text-blue-600');
+
+            [viewMyTs, viewAllTs, viewUsers].forEach(v => v.classList.add('hidden'));
+            document.getElementById(activeViewId).classList.remove('hidden');
+        }
+
+        tabMyTs.addEventListener('click', () => switchTab('tab-my-timesheet', 'view-my-timesheet'));
+        tabAllTs.addEventListener('click', () => {
+            switchTab('tab-all-timesheets', 'view-all-timesheets');
+            if(adminTsTableBody.innerHTML.includes('Click "Search"')) {
+                loadAdminTimesheets();
+            }
+        });
+        tabUsers.addEventListener('click', () => {
+            switchTab('tab-user-management', 'view-user-management');
+            loadAdminUsers();
+        });
+
+
+        // --- LOGIN & AUTH CONTROL ---
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                loginScreen.classList.add('hidden');
+                appScreen.classList.remove('hidden');
+                appScreen.classList.add('flex');
+                
+                document.getElementById('user-display-email').innerText = user.email;
+
+                // 1. Fetch User Role & Trial Info
+                const docRef = doc(db, "usuarios", user.email);
+                const docSnap = await getDoc(docRef);
+                
+                currentUserRole = "empleado"; 
+                if (docSnap.exists()) {
+                    const userData = docSnap.data();
+                    currentUserRole = userData.rol.toLowerCase();
+                    
+                    if(userData.status === 'inactive') {
+                        signOut(auth);
+                        alert("Su cuenta ha sido desactivada. Contacte a la administración.");
+                        return;
+                    }
+
+                    // --- LÓGICA DE CANDADO (TRIAL END DATE) ---
+                    if(userData.trial_end_date) {
+                        const today = new Date();
+                        const [year, month, day] = userData.trial_end_date.split('-');
+                        const trialDate = new Date(year, month - 1, day);
+                        
+                        if(today > trialDate) {
+                            appTabsContainer.classList.add('hidden');
+                            paywallScreen.classList.remove('hidden');
+                            viewMyTs.classList.add('hidden');
+                            viewAllTs.classList.add('hidden');
+                            viewUsers.classList.add('hidden');
+                            return; 
+                        }
+                    }
+                }
+                
+                paywallScreen.classList.add('hidden');
+
+                // 2. Translate Role for UI
+                let displayRole = currentUserRole;
+                if(currentUserRole === 'propietario') displayRole = 'owner';
+                if(currentUserRole === 'contralor') displayRole = 'controller';
+                if(currentUserRole === 'contabilidad') displayRole = 'accounting';
+                document.getElementById('user-display-role').innerText = displayRole;
+
+                // 3. Setup Permissions (Tabs logic & Role dropdown)
+                if (['propietario', 'contralor', 'contabilidad', 'admin', 'owner'].includes(currentUserRole)) {
+                    appTabsContainer.classList.remove('hidden');
+                    tabAllTs.classList.remove('hidden');
+                    
+                    if (['propietario', 'contralor', 'owner'].includes(currentUserRole)) {
+                        tabUsers.classList.remove('hidden');
+                    } else {
+                        tabUsers.classList.add('hidden');
+                    }
+                } else {
+                    appTabsContainer.classList.add('hidden');
+                }
+
+                // Generar dinámicamente las opciones del Rol dependiendo si es dueño
+                const roleSelect = document.getElementById('new-user-role');
+                if (roleSelect) {
+                    roleSelect.innerHTML = `
+                        <option value="empleado">Employee (General)</option>
+                        <option value="contabilidad">Accounting (Contabilidad)</option>
+                        <option value="contralor">Controller (Contralor)</option>
+                    `;
+                    // SOLO el propietario puede ver y crear otros propietarios
+                    if (['propietario', 'owner'].includes(currentUserRole)) {
+                        roleSelect.innerHTML += `<option value="propietario">Owner (Propietario)</option>`;
+                    }
+                }
+
+                // Default Reset View
+                switchTab('tab-my-timesheet', 'view-my-timesheet');
+                dateInput.valueAsDate = new Date();
+                loadTimesheetDataForDate(dateInput.value);
+                loadRecentActivity(user.email);
+                
+                resetInactivityTimer();
+
+            } else {
+                loginScreen.classList.remove('hidden');
+                appScreen.classList.add('hidden');
+                appScreen.classList.remove('flex');
+                currentUserRole = "empleado";
+                clearTimeout(inactivityTimer);
+                paywallScreen.classList.add('hidden');
+            }
+        });
+
+        document.getElementById('login-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            errorMsg.classList.add('hidden');
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            signInWithEmailAndPassword(auth, email, password).catch((error) => {
+                errorMsg.innerText = "Error: " + error.code;
+                errorMsg.classList.remove('hidden');
+            });
+        });
+
+        document.getElementById('logout-btn').addEventListener('click', () => signOut(auth));
+
+        document.getElementById('forgot-password').addEventListener('click', () => {
+            const email = document.getElementById('email').value;
+            if(!email) {
+                showToast("Please enter your email address above first.", "error");
+                return;
+            }
+            sendPasswordResetEmail(auth, email)
+                .then(() => showToast("Reset link sent! Please check your email.", "success"))
+                .catch((error) => showToast("Error: " + error.message, "error"));
+        });
+
+        // ==========================================
+        // MODULE 1: MY TIMESHEET LOGIC
+        // ==========================================
+        function addJobRow(data = {}) {
+            const tr = document.createElement('tr');
+            tr.className = "hover:bg-gray-100 transition-colors job-row";
+            tr.innerHTML = `
+                <td class="p-2 border-r"><input type="text" placeholder="Job #" class="row-job w-full p-1.5 border rounded text-sm bg-white" value="${data.job_number || ''}" required></td>
+                <td class="p-2 border-r"><input type="number" step="0.5" min="0" placeholder="0" class="row-reg w-full p-1.5 border rounded text-sm bg-white" value="${data.regular_hours !== undefined ? data.regular_hours : ''}"></td>
+                <td class="p-2 border-r"><input type="number" step="0.5" min="0" placeholder="0" class="row-ot w-full p-1.5 border rounded text-sm bg-white" value="${data.overtime_hours !== undefined ? data.overtime_hours : ''}"></td>
+                <td class="p-2 border-r"><input type="number" step="0.5" min="0" placeholder="0" class="row-dt w-full p-1.5 border rounded text-sm bg-white" value="${data.double_time_hours !== undefined ? data.double_time_hours : ''}"></td>
+                <td class="p-2 border-r"><input type="number" step="0.5" min="0" placeholder="0" class="row-high w-full p-1.5 border rounded text-sm bg-white" value="${data.high_rate_hours !== undefined ? data.high_rate_hours : ''}"></td>
+                <td class="p-2 border-r"><input type="text" placeholder="Territory notes" class="row-territory w-full p-1.5 border rounded text-sm bg-white" value="${data.out_of_territory || ''}"></td>
+                <td class="p-2 text-center">
+                    <button type="button" class="delete-row-btn text-red-500 hover:text-red-700 p-1 rounded transition-colors" title="Remove row"><i class="fa-solid fa-trash-can"></i></button>
+                </td>
+            `;
+            tr.querySelector('.delete-row-btn').addEventListener('click', () => {
+                if (jobRowsContainer.children.length > 1) tr.remove();
+                else showToast("You must keep at least one job row.", "error");
+            });
+            jobRowsContainer.appendChild(tr);
+        }
+
+        function addReimbRow(data = {}) {
+            noReimbMsg.classList.add('hidden');
+            const tr = document.createElement('tr');
+            tr.className = "hover:bg-gray-100 transition-colors reimb-row";
+            tr.innerHTML = `
+                <td class="p-2 border-r"><input type="text" placeholder="Job #" class="reimb-job w-full p-1.5 border rounded text-sm bg-white" value="${data.job_number || ''}" required></td>
+                <td class="p-2 border-r">
+                    <select class="reimb-type w-full p-1.5 border rounded text-sm bg-white" required>
+                        <option value="" disabled ${!data.expense_type ? 'selected' : ''}>Select Type</option>
+                        <option value="Mileage" ${data.expense_type === 'Mileage' ? 'selected' : ''}>Mileage (Qty)</option>
+                        <option value="Parking" ${data.expense_type === 'Parking' ? 'selected' : ''}>Parking ($)</option>
+                        <option value="Tolls" ${data.expense_type === 'Tolls' ? 'selected' : ''}>Tolls ($)</option>
+                        <option value="Hauling" ${data.expense_type === 'Hauling' ? 'selected' : ''}>Hauling ($)</option>
+                        <option value="Phone" ${data.expense_type === 'Phone' ? 'selected' : ''}>Phone ($)</option>
+                        <option value="Other" ${data.expense_type === 'Other' ? 'selected' : ''}>Other ($)</option>
+                    </select>
+                </td>
+                <td class="p-2 border-r"><input type="number" step="any" min="0.01" placeholder="0.00" class="reimb-amount w-full p-1.5 border rounded text-sm bg-white" value="${data.amount_qty || ''}" required></td>
+                <td class="p-2 border-r"><input type="text" placeholder="Notes (Optional)" class="reimb-notes w-full p-1.5 border rounded text-sm bg-white" value="${data.notes || ''}"></td>
+                <td class="p-2 text-center">
+                    <button type="button" class="delete-reimb-btn text-red-500 hover:text-red-700 p-1 rounded transition-colors" title="Remove expense"><i class="fa-solid fa-trash-can"></i></button>
+                </td>
+            `;
+            tr.querySelector('.delete-reimb-btn').addEventListener('click', () => {
+                tr.remove();
+                if (reimbRowsContainer.children.length === 0) noReimbMsg.classList.remove('hidden');
+            });
+            reimbRowsContainer.appendChild(tr);
+        }
+
+        document.getElementById('add-row-btn').addEventListener('click', () => addJobRow());
+        document.getElementById('add-reimb-btn').addEventListener('click', () => addReimbRow());
+
+        async function loadRecentActivity(email) {
+            recentActivityList.innerHTML = '<div class="text-center text-gray-500 text-sm py-4"><i class="fa-solid fa-spinner fa-spin"></i> Updating...</div>';
+            const today = new Date();
+            const datesToFetch = [];
+            for(let i=0; i<7; i++) {
+                const d = new Date(today);
+                d.setDate(d.getDate() - i);
+                const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), dd = String(d.getDate()).padStart(2, '0');
+                const dateStr = `${y}-${m}-${dd}`;
+                if(dateStr >= SYSTEM_START_DATE) datesToFetch.push(dateStr);
+            }
+            try {
+                const promises = datesToFetch.map(dateStr => getDoc(doc(db, "timesheets", `${email}_${dateStr}`)));
+                const snapshots = await Promise.all(promises);
+                let html = '';
+                snapshots.forEach((snap, index) => {
+                    const dateStr = datesToFetch[index];
+                    const [year, month, day] = dateStr.split('-');
+                    const dateObj = new Date(year, month - 1, day);
+                    const displayDate = dateObj.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                    
+                    let statusBadge = `<span class="px-2 py-1 bg-red-100 text-red-800 rounded text-[10px] font-bold uppercase tracking-wide border border-red-200">Missing</span>`;
+                    let hoursDisplay = `-`;
+
+                    if (snap.exists()) {
+                        const data = snap.data();
+                        if (data.status === 'submitted') statusBadge = `<span class="px-2 py-1 bg-green-100 text-green-800 rounded text-[10px] font-bold uppercase tracking-wide border border-green-200"><i class="fa-solid fa-check"></i> Submitted</span>`;
+                        else if (data.status === 'draft') statusBadge = `<span class="px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-[10px] font-bold uppercase tracking-wide border border-yellow-200"><i class="fa-solid fa-pen"></i> Draft</span>`;
+                        hoursDisplay = `${data.total_hours || 0} <span class="text-[10px]">hrs</span>`;
+                    }
+                    html += `
+                        <div class="flex justify-between items-center p-3 bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md hover:border-blue-300 transition cursor-pointer" onclick="changeDateAndLoad('${dateStr}')">
+                            <div>
+                                <div class="text-sm font-bold text-gray-800">${displayDate}</div>
+                                <div class="text-xs text-gray-500 font-semibold mt-1"><i class="fa-regular fa-clock"></i> ${hoursDisplay}</div>
+                            </div>
+                            <div>${statusBadge}</div>
+                        </div>
+                    `;
+                });
+                if(html === '') html = '<div class="text-sm text-gray-500 text-center">No recent dates available.</div>';
+                recentActivityList.innerHTML = html;
+            } catch (error) {
+                recentActivityList.innerHTML = '<div class="text-sm text-red-500 text-center">Failed to load history.</div>';
+            }
+        }
+
+        window.changeDateAndLoad = function(dateStr) {
+            dateInput.value = dateStr;
+            dateInput.dispatchEvent(new Event('change'));
+            document.getElementById('view-my-timesheet').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        dateInput.addEventListener('change', (e) => loadTimesheetDataForDate(e.target.value));
+
+        async function loadTimesheetDataForDate(selectedDate) {
+            if(!auth.currentUser) return;
+            const docId = `${auth.currentUser.email}_${selectedDate}`;
+            const docRef = doc(db, "timesheets", docId);
+            
+            jobRowsContainer.innerHTML = '';
+            reimbRowsContainer.innerHTML = '';
+            noReimbMsg.classList.remove('hidden');
+            submitBtn.disabled = false;
+            saveDraftBtn.disabled = false;
+            tsForm.classList.remove('opacity-75', 'pointer-events-none');
+            statusBanner.classList.add('hidden');
+            statusBanner.className = "hidden mb-4 p-3 rounded text-sm font-bold flex items-center gap-2"; 
+
+            try {
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    statusBanner.classList.remove('hidden');
+                    if(data.status === 'submitted') {
+                        statusBanner.classList.add('bg-green-100', 'text-green-800');
+                        statusBanner.innerHTML = `<i class="fa-solid fa-lock"></i> Timesheet for this date has already been SUBMITTED. (Read Only)`;
+                        submitBtn.disabled = true; saveDraftBtn.disabled = true;
+                        tsForm.classList.add('opacity-75', 'pointer-events-none');
+                    } else {
+                        statusBanner.classList.add('bg-yellow-100', 'text-yellow-800');
+                        statusBanner.innerHTML = `<i class="fa-solid fa-pen-to-square"></i> You have a DRAFT saved for this date. Continue editing below.`;
+                    }
+
+                    if (data.job_entries && data.job_entries.length > 0) data.job_entries.forEach(job => addJobRow(job));
+                    else addJobRow();
+                    if (data.reimbursements && data.reimbursements.length > 0) data.reimbursements.forEach(r => addReimbRow(r));
+                } else {
+                    addJobRow();
+                }
+            } catch (error) { addJobRow(); }
+        }
+
+        function getPreviousWorkday(dateString) {
+            const [year, month, day] = dateString.split('-');
+            const d = new Date(year, month - 1, day);
+            let dayOfWeek = d.getDay(); 
+            let subtractDays = 1;
+            if (dayOfWeek === 0) subtractDays = 2; // Sun -> Fri
+            else if (dayOfWeek === 1) subtractDays = 3; // Mon -> Fri
+            d.setDate(d.getDate() - subtractDays);
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        }
+
+        saveDraftBtn.addEventListener('click', () => processTimesheet('draft'));
+        tsForm.addEventListener('submit', (e) => { e.preventDefault(); processTimesheet('submitted'); });
+
+        async function processTimesheet(actionStatus) {
+            submitBtn.disabled = true; saveDraftBtn.disabled = true;
+            loadingSpinner.classList.remove('hidden');
+            try {
+                const selectedDate = dateInput.value;
+                if (actionStatus === 'submitted') {
+                    const prevDate = getPreviousWorkday(selectedDate);
+                    if (prevDate >= SYSTEM_START_DATE) {
+                        const prevDocId = `${auth.currentUser.email}_${prevDate}`;
+                        const prevDocSnap = await getDoc(doc(db, "timesheets", prevDocId));
+                        if (!prevDocSnap.exists() || prevDocSnap.data().status !== 'submitted') {
+                            showToast(`ACTION REQUIRED: You cannot submit today's timesheet until you submit your timesheet for the previous workday (${prevDate}).`, "error");
+                            submitBtn.disabled = false; saveDraftBtn.disabled = false; loadingSpinner.classList.add('hidden');
+                            return; 
+                        }
+                    }
+                }
+
+                const jobRows = [];
+                let totalWorkHours = 0;
+                jobRowsContainer.querySelectorAll('.job-row').forEach((tr) => {
+                    const jobNum = tr.querySelector('.row-job').value.trim();
+                    const reg = Number(tr.querySelector('.row-reg').value) || 0;
+                    const ot = Number(tr.querySelector('.row-ot').value) || 0;
+                    const dt = Number(tr.querySelector('.row-dt').value) || 0;
+                    const high = Number(tr.querySelector('.row-high').value) || 0;
+                    const territory = tr.querySelector('.row-territory').value.trim();
+                    const rowTotalHours = reg + ot + dt + high;
+                    totalWorkHours += rowTotalHours;
+                    if (jobNum || rowTotalHours > 0) {
+                        jobRows.push({ job_number: jobNum || "GENERAL", regular_hours: reg, overtime_hours: ot, double_time_hours: dt, high_rate_hours: high, out_of_territory: territory });
+                    }
+                });
+
+                const reimbRowsData = [];
+                let totalReimbursements = 0;
+                for (const tr of reimbRowsContainer.querySelectorAll('.reimb-row')) {
+                    const jobNum = tr.querySelector('.reimb-job').value.trim();
+                    const type = tr.querySelector('.reimb-type').value;
+                    const amount = Number(tr.querySelector('.reimb-amount').value) || 0;
+                    const notes = tr.querySelector('.reimb-notes').value.trim();
+                    if (amount > 0) {
+                        totalReimbursements += amount;
+                        reimbRowsData.push({ job_number: jobNum, expense_type: type, amount_qty: amount, notes: notes });
+                    }
+                }
+
+                if (totalWorkHours === 0 && totalReimbursements === 0 && actionStatus === 'submitted') {
+                    showToast("Error: All fields are zero. Cannot submit an empty timesheet.", "error");
+                    submitBtn.disabled = false; saveDraftBtn.disabled = false; loadingSpinner.classList.add('hidden');
+                    return;
+                }
+
+                for (let i = 0; i < jobRows.length; i++) {
+                    const r = jobRows[i];
+                    const hasHours = (r.regular_hours + r.overtime_hours + r.double_time_hours + r.high_rate_hours) > 0;
+                    if (hasHours && (!r.job_number || r.job_number === "GENERAL")) {
+                        showToast(`Row #${i + 1} has hours entered but is missing a valid Job #.`, "error");
+                        submitBtn.disabled = false; saveDraftBtn.disabled = false; loadingSpinner.classList.add('hidden');
+                        return;
+                    }
+                }
+
+                const docId = `${auth.currentUser.email}_${selectedDate}`;
+                const formData = {
+                    employee_email: auth.currentUser.email,
+                    date: selectedDate,
+                    status: actionStatus, 
+                    job_entries: jobRows,
+                    reimbursements: reimbRowsData,
+                    total_hours: totalWorkHours,
+                    total_reimbursements: totalReimbursements,
+                    last_updated: serverTimestamp() 
+                };
+
+                await setDoc(doc(db, "timesheets", docId), formData, { merge: true });
+
+                if (actionStatus === 'draft') {
+                    showToast("Draft saved successfully!", "success");
+                    loadTimesheetDataForDate(selectedDate);
+                } else {
+                    showToast("Timesheet FINALIZED and submitted!", "success");
+                    tsForm.reset();
+                    dateInput.valueAsDate = new Date();
+                    loadTimesheetDataForDate(dateInput.value);
+                }
+                loadRecentActivity(auth.currentUser.email);
+            } catch (error) {
+                showToast("Error saving timesheet. Check connection.", "error");
+            } finally {
+                loadingSpinner.classList.add('hidden');
+            }
+        }
+
+
+        // ==========================================
+        // MODULE 2: ADMIN COMPANY TIMESHEETS & EXPORT
+        // ==========================================
+        btnApplyFilters.addEventListener('click', loadAdminTimesheets);
+
+        async function loadAdminTimesheets() {
+            adminTsTableBody.innerHTML = '<tr><td colspan="5" class="p-6 text-center text-gray-500"><i class="fa-solid fa-spinner fa-spin"></i> Searching database...</td></tr>';
+            
+            const filterName = document.getElementById('filter-name').value.trim().toLowerCase();
+            const filterStart = document.getElementById('filter-start').value;
+            const filterEnd = document.getElementById('filter-end').value;
+
+            try {
+                const tsRef = collection(db, "timesheets");
+                const q = query(tsRef); 
+                const querySnapshot = await getDocs(q);
+                
+                currentAdminData = [];
+                let html = '';
+
+                querySnapshot.forEach((doc) => {
+                    const data = doc.data();
+                    
+                    if (!data || !data.date || !data.employee_email) return;
+
+                    let passesFilter = true;
+                    
+                    if (data.status !== 'submitted') passesFilter = false; 
+                    if (filterStart && data.date < filterStart) passesFilter = false;
+                    if (filterEnd && data.date > filterEnd) passesFilter = false;
+                    if (filterName && !data.employee_email.toLowerCase().includes(filterName)) passesFilter = false;
+
+                    if (passesFilter) {
+                        currentAdminData.push(data); 
+                        
+                        const bgStatus = 'bg-green-100 text-green-800';
+                        
+                        html += `
+                            <tr class="hover:bg-gray-50">
+                                <td class="p-3 border-b font-medium">${data.date}</td>
+                                <td class="p-3 border-b">${data.employee_email}</td>
+                                <td class="p-3 border-b"><span class="px-2 py-1 ${bgStatus} rounded text-[10px] font-bold uppercase">Submitted</span></td>
+                                <td class="p-3 border-b text-center font-bold">${data.total_hours || 0}</td>
+                                <td class="p-3 border-b text-center">$${(data.total_reimbursements || 0).toFixed(2)}</td>
+                            </tr>
+                        `;
+                    }
+                });
+
+                if(currentAdminData.length === 0) {
+                    adminTsTableBody.innerHTML = '<tr><td colspan="5" class="p-6 text-center text-gray-500 font-medium">The collaborator has no time entered in the selected date range.</td></tr>';
+                } else {
+                    currentAdminData.sort((a,b) => (a.date > b.date) ? -1 : 1);
+                    adminTsTableBody.innerHTML = html;
+                }
+
+            } catch (error) {
+                console.error("Error fetching timesheets: ", error);
+                adminTsTableBody.innerHTML = '<tr><td colspan="5" class="p-6 text-center text-red-500 font-bold">The collaborator has no time entered in the selected date range.</td></tr>';
+            }
+        }
+
+        // Export to Excel using SheetJS
+        btnExportExcel.addEventListener('click', () => {
+            if(currentAdminData.length === 0) {
+                showToast("No data to export. Please search first.", "error");
+                return;
+            }
+
+            const excelRows = [];
+            
+            // Variables para acumular los totales
+            let sumReg = 0, sumOt = 0, sumDt = 0, sumHr = 0;
+            // Totales de gastos desglosados
+            let sumMileage = 0, sumParking = 0, sumTolls = 0, sumHauling = 0, sumPhone = 0, sumOther = 0;
+
+            currentAdminData.forEach(ts => {
+                const baseInfo = {
+                    "Date": ts.date,
+                    "Employee Email": ts.employee_email,
+                    "Status": ts.status
+                };
+
+                if (ts.job_entries && ts.job_entries.length > 0) {
+                    ts.job_entries.forEach(job => {
+                        const reg = job.regular_hours || 0;
+                        const ot = job.overtime_hours || 0;
+                        const dt = job.double_time_hours || 0;
+                        const hr = job.high_rate_hours || 0;
+                        
+                        sumReg += reg;
+                        sumOt += ot;
+                        sumDt += dt;
+                        sumHr += hr;
+
+                        excelRows.push({
+                            ...baseInfo,
+                            "Record Type": "Work Hours",
+                            "Job #": job.job_number,
+                            "Regular Hours": reg,
+                            "Overtime Hours": ot,
+                            "Double Time": dt,
+                            "High Rate": hr,
+                            "Mileage (Qty)": "",
+                            "Parking ($)": "",
+                            "Tolls ($)": "",
+                            "Hauling ($)": "",
+                            "Phone ($)": "",
+                            "Other Receipts ($)": "",
+                            "Notes / Territory": job.out_of_territory || ""
+                        });
+                    });
+                }
+
+                if (ts.reimbursements && ts.reimbursements.length > 0) {
+                    ts.reimbursements.forEach(r => {
+                        const amt = r.amount_qty || 0;
+                        const type = r.expense_type;
+                        
+                        let mil = "", pko = "", tol = "", hau = "", pho = "", oth = "";
+
+                        // Clasificar el gasto en la columna correcta y sumar al total respectivo
+                        if (type === "Mileage") { mil = amt; sumMileage += amt; }
+                        else if (type === "Parking") { pko = amt; sumParking += amt; }
+                        else if (type === "Tolls") { tol = amt; sumTolls += amt; }
+                        else if (type === "Hauling") { hau = amt; sumHauling += amt; }
+                        else if (type === "Phone") { pho = amt; sumPhone += amt; }
+                        else if (type === "Other") { oth = amt; sumOther += amt; }
+                        
+                        excelRows.push({
+                            ...baseInfo,
+                            "Record Type": "Expense - " + r.expense_type,
+                            "Job #": r.job_number,
+                            "Regular Hours": "",
+                            "Overtime Hours": "",
+                            "Double Time": "",
+                            "High Rate": "",
+                            "Mileage (Qty)": mil,
+                            "Parking ($)": pko,
+                            "Tolls ($)": tol,
+                            "Hauling ($)": hau,
+                            "Phone ($)": pho,
+                            "Other Receipts ($)": oth,
+                            "Notes / Territory": r.notes || ""
+                        });
+                    });
+                }
+            });
+
+            // INYECTAR FILA DE TOTALES AL FINAL CON COLUMNAS EXACTAS
+            excelRows.push({
+                "Date": "TOTALS",
+                "Employee Email": "",
+                "Status": "",
+                "Record Type": "",
+                "Job #": "",
+                "Regular Hours": sumReg,
+                "Overtime Hours": sumOt,
+                "Double Time": sumDt,
+                "High Rate": sumHr,
+                "Mileage (Qty)": sumMileage,
+                "Parking ($)": sumParking,
+                "Tolls ($)": sumTolls,
+                "Hauling ($)": sumHauling,
+                "Phone ($)": sumPhone,
+                "Other Receipts ($)": sumOther,
+                "Notes / Territory": ""
+            });
+
+            const worksheet = XLSX.utils.json_to_sheet(excelRows);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Timesheets");
+            
+            XLSX.writeFile(workbook, `Timesheet_Export_${new Date().toISOString().split('T')[0]}.xlsx`);
+        });
+
+
+        // ==========================================
+        // MODULE 3: USER MANAGEMENT (ADMIN)
+        // ==========================================
+        btnRefreshUsers.addEventListener('click', loadAdminUsers);
+
+        async function loadAdminUsers() {
+            usersTableBody.innerHTML = '<tr><td colspan="4" class="p-6 text-center text-gray-500"><i class="fa-solid fa-spinner fa-spin"></i> Loading users...</td></tr>';
+            
+            try {
+                const usersRef = collection(db, "usuarios");
+                const querySnapshot = await getDocs(query(usersRef));
+                
+                let html = '';
+                querySnapshot.forEach((docSnap) => {
+                    const data = docSnap.data();
+                    const emailId = docSnap.id;
+                    const role = data.rol || 'Empleado';
+                    const status = data.status || 'active';
+                    
+                    let statusHtml = status === 'active' 
+                        ? `<span class="px-2 py-1 bg-green-100 text-green-800 rounded text-xs font-bold uppercase">Active</span>`
+                        : `<span class="px-2 py-1 bg-red-100 text-red-800 rounded text-xs font-bold uppercase">Inactive</span>`;
+
+                    let actionBtn = '';
+                    if (['propietario', 'owner'].includes(currentUserRole) && emailId !== auth.currentUser.email) {
+                        if(status === 'active') {
+                            actionBtn = `<button type="button" class="text-xs bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded" onclick="window.toggleUserStatus('${emailId}', 'inactive')">Deactivate</button>`;
+                        } else {
+                            actionBtn = `<button type="button" class="text-xs bg-green-500 hover:bg-green-600 text-white px-2 py-1 rounded" onclick="window.toggleUserStatus('${emailId}', 'active')">Activate</button>`;
+                        }
+                    } else if (emailId === auth.currentUser.email) {
+                        actionBtn = `<span class="text-xs text-gray-400 italic">You (Cannot edit)</span>`;
+                    }
+
+                    html += `
+                        <tr class="hover:bg-gray-50">
+                            <td class="p-3 border-b font-medium">${emailId}</td>
+                            <td class="p-3 border-b uppercase text-xs">${role}</td>
+                            <td class="p-3 border-b text-center">${statusHtml}</td>
+                            <td class="p-3 border-b text-center">${actionBtn}</td>
+                        </tr>
+                    `;
+                });
+
+                usersTableBody.innerHTML = html;
+
+            } catch (error) {
+                console.error("Error fetching users: ", error);
+                usersTableBody.innerHTML = '<tr><td colspan="4" class="p-6 text-center text-red-500">Error loading users.</td></tr>';
+            }
+        }
+
+        window.toggleUserStatus = async function(emailId, newStatus) {
+            if(!confirm(`Are you sure you want to change the status to ${newStatus.toUpperCase()}?`)) return;
+            
+            try {
+                await updateDoc(doc(db, "usuarios", emailId), {
+                    status: newStatus,
+                    updated_at: serverTimestamp()
+                });
+                showToast(`User status updated to ${newStatus}.`, "success");
+                loadAdminUsers(); // Refresh list
+            } catch(error) {
+                showToast("Error updating user status.", "error");
+            }
+        }
+
+        addUserForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const newEmail = document.getElementById('new-user-email').value.trim().toLowerCase();
+            const newRole = document.getElementById('new-user-role').value;
+            
+            try {
+                // --- NUEVO: LÓGICA DE LÍMITE DE USUARIOS ---
+                // 1. Contar cuántos usuarios existen actualmente
+                const usersRef = collection(db, "usuarios");
+                const querySnapshot = await getDocs(query(usersRef));
+                const currentUsersCount = querySnapshot.size;
+                
+                // 2. Verificar si hemos llegado al límite
+                if (currentUsersCount >= MAX_USERS_ALLOWED) {
+                    showToast(`User limit reached (${MAX_USERS_ALLOWED}). Please contact administration to upgrade your plan.`, "error");
+                    return; // Detiene la ejecución, no crea el usuario
+                }
+                
+                // 3. Si no ha llegado al límite, procede a crearlo
+                await setDoc(doc(db, "usuarios", newEmail), {
+                    email: newEmail,
+                    rol: newRole,
+                    status: "active",
+                    created_at: serverTimestamp()
+                });
+                
+                showToast(`User ${newEmail} added to database successfully!`, "success");
+                addUserForm.reset();
+                loadAdminUsers();
+                
+            } catch (error) {
+                console.error("Error adding user: ", error);
+                showToast("Error adding user to database.", "error");
+            }
+        });
+
+    </script>
+</body>
+</html>
