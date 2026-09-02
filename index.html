@@ -29,9 +29,9 @@
 
     <!-- PWA INSTALL PROMPT (Optional UI) -->
     <div id="install-prompt" class="hidden bg-blue-600 text-white p-3 flex justify-between items-center text-sm shadow-md z-50 relative">
-        <div><i class="fa-solid fa-download mr-2"></i> Instala nuestra App para un acceso más rápido.</div>
+        <div><i class="fa-solid fa-download mr-2"></i> Install our App for faster access.</div>
         <div class="flex gap-2">
-            <button id="btn-install" class="bg-white text-blue-600 px-3 py-1 rounded font-bold uppercase text-xs">Instalar</button>
+            <button id="btn-install" class="bg-white text-blue-600 px-3 py-1 rounded font-bold uppercase text-xs">Install</button>
             <button id="btn-close-install" class="text-white opacity-70 hover:opacity-100"><i class="fa-solid fa-xmark"></i></button>
         </div>
     </div>
@@ -387,14 +387,14 @@
         const MAX_USERS_ALLOWED = 5;
 
         const firebaseConfig = {
-            apiKey: "AIzaSyDsfADBi26kZlxmb32CkG0uvKKPNP0q5Mk",
-            authDomain: "pgrtimesheet-sandbox.firebaseapp.com",
-            projectId: "pgrtimesheet-sandbox",
-            storageBucket: "pgrtimesheet-sandbox.firebasestorage.app",
-            messagingSenderId: "274092264126",
-            appId: "1:274092264126:web:342ab755d36c9707926cef"
-         };
-
+            apiKey: "AIzaSyDnh-uSVwIiG0kU7IeELr0blqY3tHY33PE",
+            authDomain: "prgtimesheet.firebaseapp.com",
+            projectId: "prgtimesheet",
+            storageBucket: "prgtimesheet.firebasestorage.app",
+            messagingSenderId: "1002205034432",
+            appId: "1:1002205034432:web:0cbd4568c2b220e9087a25",
+            measurementId: "G-9H4L8W4X4X"
+        };
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
@@ -515,7 +515,7 @@
             if (auth.currentUser) {
                 inactivityTimer = setTimeout(() => {
                     signOut(auth).then(() => {
-                        showToast("Por su seguridad, la sesión se ha cerrado por inactividad de 3 minutos.", "error");
+                        showToast("For your security, your session has been closed due to 3 minutes of inactivity.", "error");
                     });
                 }, INACTIVITY_TIME_MS);
             }
@@ -572,7 +572,7 @@
                     
                     if(userData.status === 'inactive') {
                         signOut(auth);
-                        alert("Su cuenta ha sido desactivada. Contacte a la administración.");
+                        alert("Your account has been deactivated. Please contact administration.");
                         return;
                     }
 
