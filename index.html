@@ -14,6 +14,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- LIBRERÍA PARA EXPORTAR A EXCEL (.xlsx) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- LIBRERÍA PARA CÓDIGOS QR (MFA) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
         /* Ocultar la barra de desplazamiento (scrollbar) en los tabs para que se vea más limpio en móviles, pero siga siendo deslizable */
         .no-scrollbar::-webkit-scrollbar {
@@ -62,6 +64,43 @@
             </form>
             <div class="mt-4 text-center">
                 <button type="button" id="forgot-password" class="text-sm text-blue-500 hover:underline">Forgot your password?</button>
+            </div>
+            <!-- MFA SCREEN (Oculto por defecto) -->
+            <div id="mfa-screen" class="hidden mt-6 pt-6 border-t border-gray-200">
+                <h3 id="mfa-title" class="text-lg font-bold text-center text-blue-800 mb-4">Verificación de Seguridad</h3>
+                
+                <!-- Sección de Enrolamiento (Código QR y Móvil) -->
+                <div id="mfa-enroll-section" class="hidden flex-col items-center mb-4">
+                    <p class="text-xs text-gray-600 text-center mb-4">Configura tu aplicación de autenticación (ej. Google Authenticator).</p>
+                    
+                    <div id="qrcode-container" class="bg-white p-2 rounded border shadow-sm mb-4"></div>
+                    
+                    <div class="w-full space-y-2 mb-4">
+                        <a id="btn-open-auth" href="#" class="w-full block text-center bg-gray-800 text-white font-bold py-2 px-4 rounded text-sm hover:bg-gray-900 transition-colors shadow">
+                            <i class="fa-solid fa-mobile-screen-button"></i> Abrir Autenticador
+                        </a>
+                        <div class="flex items-center gap-2">
+                            <input type="text" id="mfa-secret-key" readonly class="w-full p-2 border rounded text-xs bg-gray-50 text-center font-mono">
+                            <button type="button" id="btn-copy-secret" class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-3 py-2 rounded text-xs font-bold transition-colors shadow-sm" title="Copiar Clave">
+                                <i class="fa-regular fa-copy"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Formulario de Verificación -->
+                <form id="mfa-verify-form" class="space-y-4">
+                    <div>
+                        <label class="block text-gray-700 text-xs font-bold mb-2 text-center uppercase">Código de 6 dígitos</label>
+                        <input type="text" id="mfa-code" maxlength="6" pattern="[0-9]{6}" autocomplete="one-time-code" class="w-full p-3 border rounded text-center text-2xl tracking-[0.5em] font-mono focus:outline-none focus:border-blue-500" placeholder="000000" required>
+                    </div>
+                    <button type="submit" class="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded hover:bg-blue-700 transition-colors shadow">
+                        Verificar Código
+                    </button>
+                    <button type="button" id="btn-cancel-mfa" class="w-full text-gray-500 text-sm hover:underline mt-2">
+                        Cancelar y Salir
+                    </button>
+                </form>
             </div>
         </div>
     </div>
